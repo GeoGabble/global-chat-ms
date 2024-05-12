@@ -2,8 +2,8 @@ use global_ms::run;
 mod connection;
 mod logging;
 
-use kafka::producer::Record;
-use logging::kafka_consumer::create_producer;
+// use kafka::producer::Record;
+// use logging::kafka_consumer::create_producer;
 
 #[shuttle_runtime::main]
 pub async fn axum (

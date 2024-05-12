@@ -1,57 +1,71 @@
+use crate::core::location::{check_buffer, get_connected_users, update_lat_lng, update_location};
 use crate::core::reset::reset_user;
-use crate::routes::sc_threads::{incoming_req, read_messages};
+use crate::models::message_model::{LocationDto, MessageDto};
 use crate::utils::app_state::AppState;
-use axum::extract::ws::Message;
-use axum::extract::Query;
-use axum::{
-    extract::{
-        ws::{WebSocket, WebSocketUpgrade},
-        State,
-    },
-    response::Response,
-};
-use futures_util::stream::StreamExt;
-use serde::Deserialize;
-use tokio::select;
-use tokio::sync::mpsc;
+use geohash::{encode, neighbor, Coord, Direction};
+use socketioxide::extract::{Data, SocketRef, State};
 
-#[derive(Debug, Deserialize)]
-pub struct QueryParams {
-    pub user_id: String,
-}
 
-pub async fn handler(
-    ws: WebSocketUpgrade,
-    State(appstate): State<AppState>,
-    Query(query): Query<QueryParams>,
-) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, appstate, query.user_id.clone()))
-}
+pub async fn on_connect(socket: SocketRef) {
+    println!("Socket connected: {}", socket.id);
 
-pub async fn handle_socket(sc: WebSocket, client: AppState, user_id: String) {
-    println!("User connected: {}",&user_id);
-    let (sender, receiver) = sc.split();
+    socket.on("loc_update", |socket: SocketRef, Data::<LocationDto>(data), client: State<AppState>| async move {
+        println!("Updating location");
+        let mut soc = client.sockets.lock().await;
+        soc.insert(socket.id.to_string(), data.user_id.clone());
+        let geo_hash = encode(Coord {x: data.latitude, y: data.longitude}, 5usize).unwrap();
+        let mut map = client.connections.lock().await;
+        map.insert(data.user_id.clone(), geo_hash.clone());
+        let update_location_task = tokio::spawn(update_location(
+            client.clone(),
+            geo_hash.clone(),
+            data.user_id.clone(),
+        ));
+        let update_lat_lng_task = tokio::spawn(update_lat_lng(client.clone(), geo_hash.clone(), data.clone()));
+        
+        // Check the buffer only if the update_location and update_lat_lng tasks have completed
+        if !check_buffer(client.clone(), data.user_id.clone()).await {
+            // Await the completion of both tasks
+            let _ = tokio::try_join!(update_location_task, update_lat_lng_task);
+            // let neighbours = vec![geo_hash.clone(),neighbor(&geo_hash, Direction::E).unwrap(),neighbor(&geo_hash, Direction::N).unwrap(),neighbor(&geo_hash, Direction::NE).unwrap(),neighbor(&geo_hash, Direction::NW).unwrap(),neighbor(&geo_hash, Direction::S).unwrap(),neighbor(&geo_hash, Direction::SE).unwrap(),neighbor(&geo_hash, Direction::SW).unwrap(),neighbor(&geo_hash, Direction::W).unwrap()];
+            let _ = socket.leave_all();
+            let _ =  socket.join(geo_hash.clone());
+        }
+    });
 
-    let (user_sender, user_receiver): (mpsc::Sender<Message>, mpsc::Receiver<Message>) =
-        mpsc::channel(100);
+    socket.on_disconnect(|socket: SocketRef, client: State<AppState>| async move{
+        println!("Socket disconnected: {}", socket.id);
 
-    {
-        let x = client
-            .connections
-            .lock()
-            .await
-            .insert(user_id.clone(), user_sender.clone());
-        drop(x);
-    }
-    let read = tokio::spawn(read_messages(sender, user_receiver));
-    let incom = tokio::spawn(incoming_req(receiver, user_sender, client.clone(),user_id.clone()));
+        let mut soc = client.sockets.lock().await;
+        let mut map = client.connections.lock().await;
+        {
+            if let Some(id) = soc.get(&socket.id.to_string()) {
+                reset_user(id.to_string(), client.clone()).await;
+                map.remove(id);
+            }
+        }
+        soc.remove(&socket.id.to_string());        
+    });
 
-    select! {
-        _ = read => println!("read_task completed"),
-        _ = incom => println!("incom_task completed"),
-    };
+    socket.on("message", |socket: SocketRef, Data::<MessageDto>(data), client: State<AppState>| async move {
+        println!("Message received: {:?}", data.message);
+        let connections = get_connected_users(client.clone(), data.user_id.clone()).await;
+        println!("{}", connections.len());
+        let map = client.connections.lock().await;
+        let geo_hash = map.get(&data.user_id);
+        println!("{:?}",geo_hash);
 
-    println!("Removing user: {}",user_id.clone());
-
-    reset_user(user_id, client).await;
+        if let Some(geo_hash) = geo_hash {
+            let neighbours = vec![geo_hash.to_string(),neighbor(&geo_hash, Direction::E).unwrap(),neighbor(&geo_hash, Direction::N).unwrap(),neighbor(&geo_hash, Direction::NE).unwrap(),neighbor(&geo_hash, Direction::NW).unwrap(),neighbor(&geo_hash, Direction::S).unwrap(),neighbor(&geo_hash, Direction::SE).unwrap(),neighbor(&geo_hash, Direction::SW).unwrap(),neighbor(&geo_hash, Direction::W).unwrap()];
+            let sockets = socket.to(neighbours).sockets().unwrap();
+            for sockeet in sockets.iter() {
+                let soc_map = client.sockets.lock().await;
+                let user_id = soc_map.get(&sockeet.id.to_string());
+                if connections.contains(user_id.unwrap()) {
+                    let _ = sockeet.emit("receive_message", data.message.clone());
+                }
+            }
+        }
+        
+    });
 }
