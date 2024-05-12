@@ -5,6 +5,8 @@ on:
     branches: [ "global-ms" ]
   workflow_dispatch:
 
+
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -12,7 +14,6 @@ jobs:
       - uses: shuttle-hq/deploy-action@main
         with:
           deploy-key: ${{ secrets.SHUTTLE_API_KEY }}
-          # working-directory: "backend"
           name: "global-chat-ms-v1"
           allow-dirty: "true"
           no-test: "true"
