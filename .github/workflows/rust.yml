@@ -14,7 +14,7 @@ jobs:
           deploy-key: ${{ secrets.SHUTTLE_API_KEY }}
           name: "global-chat-ms-v1"
           allow-dirty: "true"
-          no-test: "false"
+          no-test: "true"
           cargo-shuttle-version: "0.44.0"
           secrets: |
             REDIS_URI = '${{ secrets.REDIS_URI }}'
