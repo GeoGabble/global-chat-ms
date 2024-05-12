@@ -1,14 +1,9 @@
 use bb8_redis::{bb8::PooledConnection, RedisConnectionManager};
 use redis::{AsyncCommands, RedisError};
-
 use crate::utils::app_state::AppState;
-
 use super::location::location_changed;
 
 pub async fn reset_user(user_id: String, client: AppState) {
-    // {
-    //     client.connections.lock().await.remove(&user_id);
-    // }
 
     println!("Resetting user:{}", user_id);
     let mut pool: PooledConnection<RedisConnectionManager> = client.redis.get().await.unwrap();

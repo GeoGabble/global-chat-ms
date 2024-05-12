@@ -13,6 +13,7 @@ serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.113"
 tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread"] }
 tower-http = { version = "0.5.0", features = ["cors"] }
+tower = {version = "*"}
 tokio-tungstenite = "0.21.0"
 futures = "0.3.30"
 futures-util = { version = "0.3.30", features = ["sink"] }
@@ -23,4 +24,5 @@ shuttle-axum = "0.44.0"
 shuttle-secrets = "0.42.0"
 geohash = "0.13.0"
 socketioxide = { version = "0.13.1", features = ["state"] }
+
 

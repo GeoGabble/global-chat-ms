@@ -1,5 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex as TMutex};
+use tokio::sync::Mutex as TMutex;
 use bb8_redis::{bb8::Pool, RedisConnectionManager};
 // use crate::connection::connection::RedisPool;
 
