@@ -1,22 +1,21 @@
-name: Rust
+name: Shuttle Deploy
 
 on:
   push:
     branches: [ "global-ms" ]
-  pull_request:
-    branches: [ "global-ms" ]
-
-env:
-  CARGO_TERM_COLOR: always
+  workflow_dispatch:
 
 jobs:
-  build:
-
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: shuttle-hq/deploy-action@main
+        with:
+          deploy-key: ${{ secrets.SHUTTLE_API_KEY }}
+          working-directory: "backend"
+          name: "my-project"
+          allow-dirty: "true"
+          no-test: "true"
+          cargo-shuttle-version: "0.28.1"
+          secrets: |
+            REDIS_URI = '${{ secrets.REDIS_URI }}'
