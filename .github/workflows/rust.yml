@@ -19,4 +19,4 @@ jobs:
           no-test: "true"
           cargo-shuttle-version: "0.28.1"
           secrets: |
-            REDIS_URI = ${{ secrets.REDIS_URI }}
+            REDIS_URI = '${{ secrets.REDIS_URI }}'
