@@ -27,20 +27,9 @@ pub async fn update_location(client: AppState, geo_hash: String, user_id: String
             } else if let Some(valu) = value {
                 if valu != geo_hash
                 {
-                    // let failover = Failovers::new();
-                    // // let client_clone = client;
-                    // let id = user_id.clone();
-                    // let geo = geo_hash.clone();
-                    // let res = failover.retry(move || location_changed(
-                    //     client_clone.clone(),
-                    //     geo.clone(),
-                    //     id.clone(),
-                    // ),5,Duration::from_secs(0)).await;
-
-                    // println!("{:?}",res);
                     location_changed(
                         clone,
-                        geo_hash.clone(),
+                        valu.clone(),
                         user_id.clone(),
                     )
                     .await;
@@ -153,3 +142,4 @@ pub async fn user_add_update(
 ) {
     let _ : String = pool.set(format!("users:{}",user_id), geo_hash).unwrap();
 }
+

@@ -1,8 +1,9 @@
 use futures::StreamExt;
+use socketioxide::SocketIo;
 // use redis::Commands;
-use crate::utils::app_state::AppState;
+use crate::{core::message_transit::transit_message, models::pub_sub_model::MessagePayload, utils::app_state::AppState};
 
-pub async fn redis_subscribe(app_state: AppState) {
+pub async fn redis_subscribe(io: SocketIo,app_state: AppState) {
     let conn = app_state.redis.clone();
     loop {
         match conn.get_async_pubsub().await {
@@ -19,8 +20,10 @@ pub async fn redis_subscribe(app_state: AppState) {
                 let mut pubsub_stream = pubsub.on_message();
 
                 while let Some(msg) = pubsub_stream.next().await {
-                    println!("Message received: {:?}", msg);
+                    println!("Message received from payload: {:?}", msg);
                     if let Ok(payload) = msg.get_payload::<String>() {
+                        let parsed_payload: MessagePayload = serde_json::from_str(&payload).unwrap();
+                        transit_message(parsed_payload, app_state.clone(), io.clone()).await;
                         println!("Payload: {}", payload);
                     } else {
                         println!("Failed to get payload");

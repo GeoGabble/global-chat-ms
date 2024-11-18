@@ -56,7 +56,7 @@ pub async fn run() -> Router {
     // Sets up the Socket.IO namespace "/" with the provided on_connect handler, which includes the auth_middle function.
     io.ns("/", on_connect);
 
-    task::spawn(redis_subscribe(app_state_redis.clone()));
+    task::spawn(redis_subscribe(io,app_state_redis.clone()));
 
     // Creates the application's routes using the provided layer and asynchronously awaits the result.
     let app = create_routes(layer).await;

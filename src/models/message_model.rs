@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -18,4 +20,12 @@ pub struct MessageDto {
 pub struct AuthDto {
     pub user_id: String,
     pub token: String
+}
+
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SendMessageDto{
+    pub user_id: String,
+    pub message: String,
+    pub timestamp: SystemTime
 }
