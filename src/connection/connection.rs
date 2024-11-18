@@ -1,4 +1,4 @@
-use bb8_redis::{bb8::Pool, RedisConnectionManager};
+use redis::Client;
 
 /// Connects to a Redis instance and returns a connection pool.
 ///
@@ -81,10 +81,11 @@ use bb8_redis::{bb8::Pool, RedisConnectionManager};
 /// ```
 
 #[allow(dead_code)]
-pub async fn connect(uri: String) -> Pool<RedisConnectionManager> {
-    let redis_manager = RedisConnectionManager::new(uri).unwrap();
-    bb8_redis::bb8::Pool::builder().queue_strategy(bb8_redis::bb8::QueueStrategy::Fifo)
-        .build(redis_manager)
-        .await
-        .unwrap()
+pub async fn connect(uri: String) -> Client {
+    redis::Client::open(uri).unwrap()
+    // let redis_manager = RedisConnectionManager::new(uri).unwrap();
+    // bb8_redis::bb8::Pool::builder().queue_strategy(bb8_redis::bb8::QueueStrategy::Fifo)
+    //     .build(redis_manager)
+    //     .await
+    //     .unwrap()
 }

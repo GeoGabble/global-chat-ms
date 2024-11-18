@@ -3,18 +3,20 @@ use crate::core::reset::reset_user;
 use crate::models::message_model::{LocationDto, MessageDto};
 use crate::utils::app_state::AppState;
 use geohash::{encode, neighbor, Coord, Direction};
+use redis::Commands;
 use socketioxide::extract::{Data, SocketRef, State};
 
 
 pub async fn on_connect(socket: SocketRef) {
     println!("Socket connected: {}", socket.id);
 
-    socket.on("loc_update", |socket: SocketRef, Data::<LocationDto>(data), client: State<AppState>| async move {
+    socket.on("location", |socket: SocketRef, Data::<LocationDto>(data), client: State<AppState>| async move {
         println!("Updating location");
         let mut soc = client.sockets.lock().await;
         soc.insert(socket.id.to_string(), data.user_id.clone());
         let geo_hash = encode(Coord {x: data.latitude, y: data.longitude}, 5usize).unwrap();
         let mut map = client.connections.lock().await;
+        println!("{}",geo_hash);
         map.insert(data.user_id.clone(), geo_hash.clone());
         let update_location_task = tokio::spawn(update_location(
             client.clone(),
@@ -44,11 +46,14 @@ pub async fn on_connect(socket: SocketRef) {
                 map.remove(id);
             }
         }
-        soc.remove(&socket.id.to_string());        
+        soc.remove(&socket.id.to_string());
     });
 
     socket.on("message", |socket: SocketRef, Data::<MessageDto>(data), client: State<AppState>| async move {
         println!("Message received: {:?}", data.message);
+        let mut conn = client.redis.clone();
+        // let pubsub = conn.get_async_pubsub().await.unwrap();
+        let _ :() =conn.publish("messages", data.message.clone()).unwrap();
         let connections = get_connected_users(client.clone(), data.user_id.clone()).await;
         println!("{}", connections.len());
         let map = client.connections.lock().await;

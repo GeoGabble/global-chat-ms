@@ -1,26 +1,24 @@
 use crate::models::message_model::LocationDto;
 use crate::utils::app_state::AppState;
-use crate::utils::failovers::retry::Failovers;
-use bb8_redis::{bb8::PooledConnection, RedisConnectionManager};
 use geohash::{neighbor, Direction};
 use redis::geo::{Coord, RadiusOptions, RadiusOrder, RadiusSearchResult, Unit};
-use redis::{AsyncCommands, RedisError};
+use redis::{Client, Commands, RedisError};
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub async fn get_connected_users(client: AppState, user_id: String) -> HashSet<String> {
-    let mut pool: PooledConnection<RedisConnectionManager> = client.redis.get().await.unwrap();
+    let mut pool = client.redis;
     let users: HashSet<String> = pool
         .smembers(format!("connected:{}", user_id))
-        .await
         .unwrap();
     users
 }
 pub async fn update_location(client: AppState, geo_hash: String, user_id: String) {
     println!("Updating");
-    let mut pool: PooledConnection<RedisConnectionManager> = client.redis.get().await.unwrap();
+    let clone = client.clone();
+    let mut pool  = client.redis;
     // let pool_mut = Arc::new(Mutex::new(pool));
     let val: Result<Option<String>, redis::RedisError> =
-        pool.get(format!("users:{}", user_id)).await;
+        pool.get(format!("users:{}", user_id));
     match val {
         Ok(value) => {
             if let None = value {
@@ -29,24 +27,23 @@ pub async fn update_location(client: AppState, geo_hash: String, user_id: String
             } else if let Some(valu) = value {
                 if valu != geo_hash
                 {
-                    let failover = Failovers::new();
-                    let client_clone = client.clone();
-                    let id = user_id.clone();
-                    let geo = geo_hash.clone();
-                    let res = failover.retry(move || location_changed(
-                        client_clone.clone(),
-                        geo.clone(),
-                        id.clone(),
-                    ),5,Duration::from_secs(0)).await;
+                    // let failover = Failovers::new();
+                    // // let client_clone = client;
+                    // let id = user_id.clone();
+                    // let geo = geo_hash.clone();
+                    // let res = failover.retry(move || location_changed(
+                    //     client_clone.clone(),
+                    //     geo.clone(),
+                    //     id.clone(),
+                    // ),5,Duration::from_secs(0)).await;
 
-                    println!("{:?}",res);
-                    // location_changed(
-                    //     &mut pool,
-                    //     value.get("state").unwrap().to_owned(),
-                    //     value.get("country").unwrap().to_owned(),
-                    //     user_id.clone(),
-                    // )
-                    // .await;
+                    // println!("{:?}",res);
+                    location_changed(
+                        clone,
+                        geo_hash.clone(),
+                        user_id.clone(),
+                    )
+                    .await;
                     user_add_update(&mut pool, geo_hash, user_id).await;
                 }
             }
@@ -58,8 +55,8 @@ pub async fn update_location(client: AppState, geo_hash: String, user_id: String
 }
 
 pub async fn check_buffer(client: AppState, user_id: String) -> bool {
-    let mut pool: PooledConnection<RedisConnectionManager> = client.redis.get().await.unwrap();
-    let value: Result<Option<u64>, redis::RedisError> = pool.hget("buffer_states", &user_id).await;
+    let mut pool = client.redis;
+    let value: Result<Option<u64>, redis::RedisError> = pool.hget("buffer_states", &user_id);
     match value {
         Ok(value) => {
             if let Some(state) = value {
@@ -79,7 +76,6 @@ pub async fn check_buffer(client: AppState, user_id: String) -> bool {
                             &user_id,
                             up.duration_since(UNIX_EPOCH).unwrap().as_secs().to_string(),
                         )
-                        .await
                         .unwrap();
                     return false;
                 } else {
@@ -95,7 +91,6 @@ pub async fn check_buffer(client: AppState, user_id: String) -> bool {
                         &user_id,
                         up.duration_since(UNIX_EPOCH).unwrap().as_secs().to_string(),
                     )
-                    .await
                     .unwrap();
                 eprintln!("User {} not found", user_id);
                 return false;
@@ -110,7 +105,7 @@ pub async fn check_buffer(client: AppState, user_id: String) -> bool {
 }
 
 pub async fn update_lat_lng(client: AppState, geo_hash: String, message: LocationDto ) {
-    let mut pool: PooledConnection<RedisConnectionManager> = client.redis.get().await.unwrap();
+    let mut pool= client.redis;
     let _: () = pool
         .geo_add(
             format!("curLoc:{}", geo_hash),
@@ -119,24 +114,22 @@ pub async fn update_lat_lng(client: AppState, geo_hash: String, message: Locatio
                 &message.user_id,
             ),
         )
-        .await
         .unwrap();
     let neighbours = vec![geo_hash.clone(),neighbor(&geo_hash, Direction::E).unwrap(),neighbor(&geo_hash, Direction::N).unwrap(),neighbor(&geo_hash, Direction::NE).unwrap(),neighbor(&geo_hash, Direction::NW).unwrap(),neighbor(&geo_hash, Direction::S).unwrap(),neighbor(&geo_hash, Direction::SE).unwrap(),neighbor(&geo_hash, Direction::SW).unwrap(),neighbor(&geo_hash, Direction::W).unwrap()];
     let mut ids = Vec::new();
 
     for nei in neighbours.iter() {
         let opts = RadiusOptions::default().with_dist().order(RadiusOrder::Asc);
-        let mut id_ne: Vec<RadiusSearchResult> = pool.geo_radius(format!("curLoc:{}",nei), message.longitude, message.latitude, 5.0, Unit::Kilometers, opts).await.unwrap();
+        let mut id_ne: Vec<RadiusSearchResult> = pool.geo_radius(format!("curLoc:{}",nei), message.longitude, message.latitude, 5.0, Unit::Kilometers, opts).unwrap();
         ids.append(&mut id_ne);
     }
     println!("Nearby users: {:?}", ids.len());
-    let _ : () =pool.del(format!("connected:{}", &message.user_id)).await.unwrap();
+    let _ : () =pool.del(format!("connected:{}", &message.user_id)).unwrap();
 
     for id in ids.iter() {
-        if &id.name != &message.user_id {
+        if id.name != message.user_id {
             let _: () = pool
                 .sadd(format!("connected:{}", &message.user_id), &id.name)
-                .await
                 .unwrap();
         }
     }
@@ -146,18 +139,17 @@ pub async fn location_changed(
     client: AppState,
     geo_hash: String,
     user_id: String,
-)-> Result<(), RedisError>{
-    let mut pool = client.redis.get().await.unwrap();
-    let y: Result<(), RedisError>= pool
-        .zrem(format!("curLoc:{}", geo_hash), user_id)
-        .await;
-    y
+){
+    let mut pool = client.redis;
+    let _: Result<(), RedisError>= pool
+        .zrem(format!("curLoc:{}", geo_hash), user_id);
+    // y
 }
 
 pub async fn user_add_update(
-    pool: &mut PooledConnection<'_, RedisConnectionManager>,
+    pool: &mut Client,
     geo_hash: String,
     user_id: String,
 ) {
-    let _ : String = pool.set(format!("users:{}",user_id), geo_hash).await.unwrap();
+    let _ : String = pool.set(format!("users:{}",user_id), geo_hash).unwrap();
 }
